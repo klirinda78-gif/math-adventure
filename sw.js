@@ -1,14 +1,14 @@
 /* Service Worker — офлайн-кэш приложения «Математическое приключение» */
-const CACHE = "math-adv-v3";
+const CACHE = "math-adv-v3-flat";
 const ASSETS = [
   "./",
   "./index.html",
-  "./css/styles.css",
-  "./js/data.js",
-  "./js/generator.js",
-  "./js/firebase-config.js",
-  "./js/cloud.js",
-  "./js/app.js",
+  "./styles.css",
+  "./data.js",
+  "./generator.js",
+  "./firebase-config.js",
+  "./cloud.js",
+  "./app.js",
   "./manifest.webmanifest"
 ];
 
