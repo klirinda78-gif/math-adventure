@@ -10,7 +10,12 @@ const SETTINGS_KEY = "mathAdventure_settings";
 
 /* ----------  Настройки приложения (общие)  ---------- */
 function defaultSettings() {
-  return { audio: true, unlockMode: "sequential" }; // sequential | open
+  return { audio: true, unlockMode: "sequential", taskSource: "themed" }; // taskSource: themed | textbook
+}
+/* Активный набор задач тренажёра для темы (с учётом настройки «Из учебника») */
+function activeTrainer(topic) {
+  if (settings.taskSource === "textbook" && window.TEXTBOOK && TEXTBOOK[topic.id]) return TEXTBOOK[topic.id];
+  return topic.trainer;
 }
 let settings = (() => {
   try { return Object.assign(defaultSettings(), JSON.parse(localStorage.getItem(SETTINGS_KEY))); }
@@ -684,7 +689,7 @@ function renderTrainer() {
     <section class="card head-card" style="border-top:5px solid ${t.color}">
       <button class="back" onclick="navigate('map')">‹ Назад</button>
       <h1>🎮 Тренажёр: ${t.title}</h1>
-      <p class="muted">Выбери уровень сложности</p>
+      <p class="muted">Выбери уровень сложности ${settings.taskSource === "textbook" ? '• <b>📖 задачи из учебника</b>' : ""}</p>
       <div class="level-pick">
         <button class="lvl-btn easy" onclick="startTrainer('${t.id}','easy')">🟢 Лёгкий</button>
         <button class="lvl-btn medium" onclick="startTrainer('${t.id}','medium')">🟡 Средний</button>
@@ -706,7 +711,7 @@ function startTrainer(topicId, level) {
   else if (level === "infinite") mode = "infinite";
   let tasks = [];
   if (mode === "fixed") {
-    tasks = (t.trainer[level] || []).slice();
+    tasks = (activeTrainer(t)[level] || []).slice();
     if (!tasks.length) tasks = [generateTask(topicId, level), generateTask(topicId, level), generateTask(topicId, level)];
   }
   const target = mode === "auto" ? 8 : mode === "infinite" ? Infinity : tasks.length;
@@ -777,14 +782,14 @@ function finishTrainer() {
 function buildFivePack() {
   // 5 коротких вопросов из новых тем + 1 мини-задача + 1 на повторение старой темы
   const pool = [];
-  TOPICS.forEach(t => t.trainer.easy.concat(t.trainer.medium).forEach(q => pool.push({ q, topicId: t.id })));
+  TOPICS.forEach(t => { const tr = activeTrainer(t); tr.easy.concat(tr.medium).forEach(q => pool.push({ q, topicId: t.id })); });
   shuffle(pool);
   const quick = pool.slice(0, 5);
   const mini = pool.find(p => p.q.q.length > 30) || pool[5];
   // вопрос на повторение: из пройденной/слабой темы
   const reviewTopic = state.weakTopics[0] || (state.completedLessons.length ? TOPICS[0].id : TOPICS[0].id);
   const rt = topicById(reviewTopic);
-  const reviewQ = { q: rt.trainer.easy[0], topicId: rt.id };
+  const reviewQ = { q: activeTrainer(rt).easy[0], topicId: rt.id };
   return [...quick, { ...mini, mini: true }, { ...reviewQ, review: true }];
 }
 let fiveState = null;
@@ -952,6 +957,10 @@ function renderProfile() {
         <span>🔓 Открыть все острова сразу</span>
         <input type="checkbox" ${settings.unlockMode === "open" ? "checked" : ""} onchange="toggleUnlock()">
       </label>
+      <label class="switch-row">
+        <span>📖 Задачи из учебника<br><small class="muted">Пчёлко/Поляк, «Арифметика, 2 класс»</small></span>
+        <input type="checkbox" ${settings.taskSource === "textbook" ? "checked" : ""} onchange="toggleTaskSource()">
+      </label>
     </section>
 
     <section class="card">
@@ -971,6 +980,7 @@ function renderProfile() {
 }
 
 function toggleUnlock() { settings.unlockMode = settings.unlockMode === "open" ? "sequential" : "open"; saveSettings(); }
+function toggleTaskSource() { settings.taskSource = settings.taskSource === "textbook" ? "themed" : "textbook"; saveSettings(); render(); }
 
 function addProfilePrompt() {
   const name = prompt("Имя ребёнка:");
@@ -1135,8 +1145,10 @@ function taskHTML(task, ctx) {
               onkeydown="if(event.key==='Enter'){${answerHandler(ctx)}}">`;
   }
   const qLine = task.type === "fill" ? "" : `<p class="q">${task.q} ${speakBtn(task.q)}</p>`;
+  const refLine = task.ref ? `<div class="task-ref">📖 Учебник, задача ${task.ref}</div>` : "";
   return `
     ${qLine}
+    ${refLine}
     ${input}
     <div class="task-actions">
       <button class="btn ghost" onclick="showHint('${ctx}','${escapeAttr(task.hint || "Подумай ещё разок!")}')">💡 Подсказка</button>

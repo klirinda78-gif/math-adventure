@@ -250,6 +250,10 @@ small { font-size: .82rem; }
 .avatar-edit { position: absolute; bottom: 2px; right: 2px; font-size: .9rem; background: #fff;
   border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; box-shadow: var(--shadow); }
 
+/* Ссылка на задачу учебника */
+.task-ref { display: inline-block; font-size: .8rem; font-weight: 700; color: #8a6d00;
+  background: #fff6d8; border-radius: 999px; padding: 3px 10px; margin: 0 0 8px; }
+
 /* ===== v2: новые элементы ===== */
 
 /* Озвучка */
