@@ -250,6 +250,63 @@ small { font-size: .82rem; }
 .avatar-edit { position: absolute; bottom: 2px; right: 2px; font-size: .9rem; background: #fff;
   border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; box-shadow: var(--shadow); }
 
+/* ===== Выбор сложности 1/2/3 ===== */
+.diff-picker { display: flex; gap: 8px; margin-top: 10px; }
+.diff-btn { flex: 1; border: 2px solid var(--line); background: #f6f8fc; border-radius: 14px;
+  padding: 10px 6px; cursor: pointer; font-family: inherit; display: flex; flex-direction: column;
+  align-items: center; gap: 3px; transition: all .12s; }
+.diff-btn .diff-num { font-size: 1.4rem; font-weight: 900; color: var(--muted); }
+.diff-btn .diff-name { font-size: .78rem; font-weight: 700; color: var(--muted); }
+.diff-btn.d1.sel { border-color: var(--green); background: #eafff0; }
+.diff-btn.d2.sel { border-color: var(--orange); background: #fff3df; }
+.diff-btn.d3.sel { border-color: var(--pink); background: #ffe7df; }
+.diff-btn.sel .diff-num, .diff-btn.sel .diff-name { color: var(--ink); }
+.diff-btn:active { transform: scale(.96); }
+.lvl-btn.recommend { outline: 3px solid #fff; box-shadow: 0 0 0 3px var(--ink); }
+.lvl-btn small { display: block; font-weight: 600; opacity: .92; font-size: .72rem; }
+
+/* ===== Кубок сезона ===== */
+.cup-card { text-align: center; }
+.cup-card b { display: block; font-size: 1.1rem; margin: 4px 0; }
+.cup-card small { color: var(--muted); display: block; margin-bottom: 10px; }
+.cup-emoji { font-size: 2.4rem; }
+.cup-card .btn { width: 100%; }
+.cup-card.ready { background: linear-gradient(135deg, #fff6d8, #ffe9a8); }
+.cup-card.won { background: linear-gradient(135deg, #fff2c4, #ffd76a); }
+.cup-card.locked { opacity: .92; }
+.cup-head { border-top: 5px solid var(--yellow); }
+
+/* ===== Экзамен / локи уроков / медаль ===== */
+.locked-lesson { opacity: .7; }
+.locked-lesson .li-ic { filter: grayscale(1); }
+.exam-card { border-radius: 16px; padding: 16px; margin: 10px 0; text-align: center; font-weight: 600; }
+.exam-card.ready { background: #eafff0; border: 2px solid var(--green); }
+.exam-card.passed { background: #fff6d8; border: 2px solid var(--yellow); }
+.exam-card.locked-lesson { background: #f0f3f9; border: 2px dashed var(--line); }
+.exam-card .btn { margin-top: 10px; width: 100%; }
+.node-medal { position: absolute; top: -6px; right: -6px; font-size: 1.1rem; }
+
+/* ===== Маршрут урока (шаги) ===== */
+.lesson-steps { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 6px; }
+.lstep { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 0 0 auto; }
+.lstep-dot { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: #eef2f8; color: var(--muted); font-weight: 800; font-size: .9rem; transition: all .2s; }
+.lstep-name { font-size: .66rem; font-weight: 700; color: var(--muted); text-align: center; }
+.lstep.active .lstep-dot { background: var(--blue); color: #fff; transform: scale(1.12); box-shadow: 0 4px 10px rgba(10,132,255,.35); }
+.lstep.active .lstep-name { color: var(--blue); }
+.lstep.done .lstep-dot { background: var(--green); color: #fff; }
+.lstep-line { flex: 1; height: 3px; background: #eef2f8; border-radius: 2px; margin: 0 2px; margin-bottom: 18px; }
+.speech.guide { background: #eef5ff; font-weight: 600; font-size: .92rem; }
+.hint-inline { color: var(--blue); font-weight: 700; margin-top: 10px; }
+.current-block { box-shadow: 0 0 0 3px rgba(10,132,255,.25), var(--shadow); }
+
+/* Счётчик задач в уроке */
+.mini-counter { margin-bottom: 10px; }
+.dots { display: inline-flex; gap: 5px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #dfe5ee; display: inline-block; }
+.dot.done { background: var(--green); }
+.dot.cur { background: var(--blue); transform: scale(1.2); }
+
 /* Ссылка на задачу учебника */
 .task-ref { display: inline-block; font-size: .8rem; font-weight: 700; color: #8a6d00;
   background: #fff6d8; border-radius: 999px; padding: 3px 10px; margin: 0 0 8px; }

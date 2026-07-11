@@ -1,5 +1,5 @@
 /* Service Worker — офлайн-кэш приложения «Математическое приключение» */
-const CACHE = "math-adv-v4-flat";
+const CACHE = "math-adv-v5-flat";
 const ASSETS = [
   "./",
   "./index.html",

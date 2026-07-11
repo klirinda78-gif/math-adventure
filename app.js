@@ -10,7 +10,24 @@ const SETTINGS_KEY = "mathAdventure_settings";
 
 /* ----------  Настройки приложения (общие)  ---------- */
 function defaultSettings() {
-  return { audio: true, unlockMode: "sequential", taskSource: "themed" }; // taskSource: themed | textbook
+  return { audio: true, sound: true, unlockMode: "sequential", taskSource: "themed", difficulty: 2 }; // difficulty: 1|2|3
+}
+/* Уровни сложности 1/2/3 */
+const LEVELS = {
+  1: { key: "easy",   name: "Лёгкий",  icon: "🟢", cls: "easy" },
+  2: { key: "medium", name: "Средний", icon: "🟡", cls: "medium" },
+  3: { key: "hard",   name: "Сложный", icon: "🔴", cls: "hard" }
+};
+function curLevelNum() { return settings.difficulty || 2; }
+function diffKey() { return LEVELS[curLevelNum()].key; }
+function numFromKey(k) { return k === "easy" ? 1 : k === "hard" ? 3 : 2; }
+function setDifficulty(n) { settings.difficulty = n; saveSettings(); sfx("click"); render(); }
+function difficultyPicker() {
+  return `<div class="diff-picker">` + [1, 2, 3].map(n => {
+    const L = LEVELS[n];
+    return `<button class="diff-btn d${n} ${curLevelNum() === n ? "sel" : ""}" onclick="setDifficulty(${n})">
+      <span class="diff-num">${n}</span><span class="diff-name">${L.icon} ${L.name}</span></button>`;
+  }).join("") + `</div>`;
 }
 /* Активный набор задач тренажёра для темы (с учётом настройки «Из учебника») */
 function activeTrainer(topic) {
@@ -46,9 +63,14 @@ function defaultState(name = "Чемпион", grade = "2 класс") {
     totalWrong: 0,
     fiveMinDone: 0,
     reviewQueue: [],             // [{topicId, due:'YYYY-MM-DD', stage}]
+    examsPassed: {},             // topicId -> лучший % сдачи экзамена темы
+    cupBest: 0,                  // лучший % финального Кубка сезона
     onboarded: false
   };
 }
+/* Все ли медали собраны (сданы экзамены всех тем) */
+function allMedals() { return TOPICS.every(t => state.examsPassed && state.examsPassed[t.id]); }
+const CUP_PASS = 80; // процент для победы в Кубке
 
 /* ----------  Мультипрофильное хранилище  ---------- */
 let store = loadStore();
@@ -217,6 +239,38 @@ function speakBtn(text) {
 }
 function toggleAudio() { settings.audio = !settings.audio; saveSettings(); if (!settings.audio && canSpeak()) speechSynthesis.cancel(); render(); }
 
+/* ----------  Звуковые эффекты (Web Audio, без файлов) ---------- */
+let _audioCtx = null;
+function playTone(freq, startAt, dur, type, vol) {
+  const ctx = _audioCtx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || "sine";
+  osc.frequency.value = freq;
+  osc.connect(gain); gain.connect(ctx.destination);
+  const t = ctx.currentTime + startAt;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(vol || 0.2, t + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.start(t); osc.stop(t + dur + 0.02);
+}
+const SFX = {
+  correct: [[660, 0, 0.12, "triangle"], [990, 0.1, 0.16, "triangle"]],
+  wrong:   [[300, 0, 0.16, "sine"], [200, 0.12, 0.22, "sine"]],
+  reward:  [[523, 0, 0.12, "triangle"], [659, 0.11, 0.12, "triangle"], [784, 0.22, 0.2, "triangle"]],
+  win:     [[523, 0, 0.14, "triangle"], [659, 0.13, 0.14, "triangle"], [784, 0.26, 0.14, "triangle"], [1047, 0.39, 0.3, "triangle"]],
+  click:   [[520, 0, 0.05, "square"]]
+};
+function sfx(kind) {
+  if (!settings.sound) return;
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === "suspended") _audioCtx.resume();
+    (SFX[kind] || []).forEach(([f, s, d, ty]) => playTone(f, s, d, ty, kind === "wrong" ? 0.12 : 0.18));
+  } catch (e) { /* ignore */ }
+}
+function toggleSound() { settings.sound = !settings.sound; saveSettings(); if (settings.sound) sfx("click"); render(); }
+
 /* ----------  Награды и достижения  ---------- */
 function addReward(coins = 0, stars = 0, points = 0) {
   state.coins += coins;
@@ -313,7 +367,7 @@ function render() {
   const views = {
     home: renderHome, map: renderMap, lesson: renderLesson,
     trainer: renderTrainer, five: renderFive, weak: renderWeak,
-    profile: renderProfile, parent: renderParent
+    profile: renderProfile, parent: renderParent, exam: renderExam, cup: renderCup
   };
   (views[route.view] || renderHome)();
   renderNav();
@@ -345,6 +399,9 @@ function renderOnboarding() {
       </label>
       <div class="field">Выбери аватар:
         ${avatarGrid(obAvatar, "pickAvatar")}
+      </div>
+      <div class="field">Выбери сложность (потом можно поменять):
+        ${difficultyPicker()}
       </div>
       <button class="btn primary big" onclick="finishOnboarding()">Поехали! ${obAvatar}</button>
     </div>`;
@@ -426,6 +483,11 @@ function renderHome() {
       <div class="progress"><div class="progress-fill" style="width:${prog}%"></div></div>
     </section>
 
+    <section class="card">
+      <div class="row-between"><strong>Сложность заданий</strong><span class="muted">Уровень ${curLevelNum()}</span></div>
+      ${difficultyPicker()}
+    </section>
+
     <div class="grid2">
       <button class="action-card green" onclick="continueLesson()">
         <span class="ac-ic">▶️</span><b>Продолжить занятие</b>
@@ -445,6 +507,8 @@ function renderHome() {
       </button>
     </div>
 
+    ${cupHomeCard()}
+
     ${reviews.length ? `
     <section class="card review-banner">
       🔁 Пора повторить: ${reviews.map(r => topicById(r.topicId).title).join(", ")}.
@@ -463,6 +527,33 @@ function renderHome() {
         <div class="reward-pill">🏅 <b>${state.achievements.length}</b><small>наград</small></div>
       </div>
     </section>`;
+}
+
+function cupHomeCard() {
+  const medals = TOPICS.filter(t => state.examsPassed && state.examsPassed[t.id]).length;
+  const total = TOPICS.length;
+  if (state.cupBest) {
+    return `<section class="card cup-card won">
+      <div class="cup-emoji">🏆</div>
+      <b>Ты — Чемпион сезона!</b>
+      <small>Кубок выигран • лучший результат ${state.cupBest}%</small>
+      <button class="btn outline" onclick="navigate('cup')">Пройти снова 🔁</button>
+    </section>`;
+  }
+  if (allMedals()) {
+    return `<section class="card cup-card ready">
+      <div class="cup-emoji">🏆</div>
+      <b>Кубок сезона открыт!</b>
+      <small>Все медали собраны 🏅 — сыграй в большой финал!</small>
+      <button class="btn primary" onclick="navigate('cup')">Сыграть за Кубок 🏁</button>
+    </section>`;
+  }
+  return `<section class="card cup-card locked">
+    <div class="cup-emoji">🔒🏆</div>
+    <b>Кубок сезона</b>
+    <small>Собери все медали, чтобы открыть финал: ${medals} из ${total} 🏅</small>
+    <div class="progress"><div class="progress-fill" style="width:${Math.round(medals / total * 100)}%"></div></div>
+  </section>`;
 }
 
 function findNextLesson() {
@@ -501,9 +592,10 @@ function renderMap() {
         <div class="node-circle" style="background:${unlocked ? t.color : '#c7cdd8'}">
           <span class="node-ic">${unlocked ? t.icon : "🔒"}</span>
           ${done ? '<span class="node-check">✓</span>' : ""}
+          ${state.examsPassed && state.examsPassed[t.id] ? '<span class="node-medal">🏅</span>' : ""}
         </div>
         <div class="node-info">
-          <b>${t.title}</b>
+          <b>${t.title} ${state.examsPassed && state.examsPassed[t.id] ? "🏅" : ""}</b>
           <small>${unlocked ? t.subtitle : "Сначала начни предыдущий остров"}</small>
           ${unlocked ? `<div class="mini-progress"><div style="width:${pct}%;background:${t.color}"></div></div>
           <span class="muted">${pct}%</span>` : ""}
@@ -525,28 +617,55 @@ function lockedHint() {
   setTimeout(() => t.classList.remove("show"), 2500);
 }
 
+function isLessonUnlocked(topic, i) {
+  if (settings.unlockMode === "open") return true;
+  if (i === 0) return true;
+  return state.completedLessons.includes(topic.lessons[i - 1].id);
+}
+function allLessonsDone(topic) {
+  return topic.lessons.every(l => state.completedLessons.includes(l.id));
+}
 function openTopic(topicId) {
   const t = topicById(topicId);
-  const lessons = t.lessons.map(l => {
+  const lessons = t.lessons.map((l, i) => {
     const done = state.completedLessons.includes(l.id);
+    const unlocked = isLessonUnlocked(t, i);
     const score = state.lessonScores[l.id];
+    if (!unlocked) {
+      return `
+        <div class="list-item locked-lesson">
+          <span class="li-ic">🔒</span>
+          <span class="li-main"><b>${l.title}</b><small>Сначала пройди предыдущий урок</small></span>
+        </div>`;
+    }
     return `
-      <button class="list-item" onclick="navigate('lesson',{topicId:'${t.id}',lessonId:'${l.id}'})">
+      <button class="list-item" onclick="closeSheet();navigate('lesson',{topicId:'${t.id}',lessonId:'${l.id}'})">
         <span class="li-ic">${done ? "✅" : "📘"}</span>
-        <span class="li-main"><b>${l.title}</b>${done && score != null ? `<small>результат ${score}%</small>` : ""}</span>
+        <span class="li-main"><b>Урок ${i + 1}. ${l.title}</b>${done && score != null ? `<small>результат ${score}%</small>` : "<small>нажми, чтобы начать</small>"}</span>
         <span class="li-go">›</span>
       </button>`;
   }).join("");
 
+  const examReady = allLessonsDone(t);
+  const examPassed = state.examsPassed && state.examsPassed[t.id];
+  const examBlock = examPassed
+    ? `<div class="exam-card passed">🏅 <b>Экзамен уровня сдан!</b><br><small>Результат: ${state.examsPassed[t.id]}%</small>
+         <button class="btn outline" onclick="closeSheet();navigate('exam',{topicId:'${t.id}'})">Пересдать 🔁</button></div>`
+    : examReady
+      ? `<div class="exam-card ready">🏁 <b>Экзамен уровня открыт!</b><br><small>Пройди все уроки — уже готово. Проверь себя и получи медаль 🏅</small>
+           <button class="btn primary" onclick="closeSheet();navigate('exam',{topicId:'${t.id}'})">Сдать экзамен 🏁</button></div>`
+      : `<div class="exam-card locked-lesson">🔒 <b>Экзамен уровня</b><br><small>Откроется, когда пройдёшь все уроки темы</small></div>`;
+
   showSheet(`
     <div class="sheet-head" style="background:${t.color}">
       <span class="sheet-ic">${t.icon}</span>
-      <div><h2>${t.title}</h2><p>${t.blurb}</p></div>
+      <div><h2>${t.title} ${examPassed ? "🏅" : ""}</h2><p>${t.blurb}</p></div>
     </div>
     <div class="sheet-body">
-      <h3>Уроки</h3>
+      <h3>Уроки (по порядку)</h3>
       ${lessons}
-      <button class="btn primary big" onclick="closeSheet();navigate('trainer',{topicId:'${t.id}'})">🎮 Тренажёр задач</button>
+      ${examBlock}
+      <button class="btn outline big" onclick="closeSheet();navigate('trainer',{topicId:'${t.id}'})">🎮 Тренажёр задач</button>
     </div>`);
 }
 
@@ -563,39 +682,64 @@ function renderLesson() {
       <button class="back" onclick="navigate('map')">‹ Назад</button>
       <h1>${lesson.title}</h1>
       <p class="muted">${t.icon} ${t.title}</p>
+      <div class="lesson-steps" id="lessonSteps">
+        ${LESSON_STAGES.map((s, i) => `<div class="lstep" data-i="${i}"><span class="lstep-dot">${i + 1}</span><span class="lstep-name">${s}</span></div>`).join('<span class="lstep-line"></span>')}
+      </div>
+      <div class="speech guide">🧭 Как проходит урок: прочитай <b>объяснение</b> и <b>пример</b> → реши <b>задачки</b> → пройди <b>проверку</b> → получи <b>награду</b> 🏆</div>
     </section>
 
-    <section class="card block">
-      <h3>💡 Объяснение ${speakBtn(lesson.explanation)}</h3>
+    <section class="card block" id="blockExplain">
+      <h3>💡 Шаг 1. Объяснение ${speakBtn(lesson.explanation)}</h3>
       <p>${lesson.explanation}</p>
     </section>
 
-    <section class="card block">
-      <h3>📝 Пример ${speakBtn(ex.problem + ". " + ex.steps.join(". "))}</h3>
+    <section class="card block" id="blockExample">
+      <h3>📝 Шаг 2. Пример ${speakBtn(ex.problem + ". " + ex.steps.join(". "))}</h3>
       <p class="problem">${ex.problem}</p>
       <button class="btn outline" id="showSteps" onclick="toggleSteps()">Показать решение по шагам</button>
       <ol class="steps hidden" id="steps">
         ${ex.steps.map(s => `<li>${s}</li>`).join("")}
       </ol>
+      <p class="hint-inline">👇 Теперь попробуй сам — реши задачки ниже.</p>
     </section>
 
-    <section class="card block">
-      <h3>🎯 Мини-тренировка</h3>
+    <section class="card block current-block" id="blockPractice">
+      <h3>🎯 Шаг 3. Тренировка</h3>
       <div id="practiceArea"></div>
     </section>
 
     <section class="card block hidden" id="checkBlock">
-      <h3>✅ Быстрая проверка</h3>
+      <h3>✅ Шаг 4. Быстрая проверка</h3>
+      <p class="muted">Один вопрос — покажи, что всё понял!</p>
       <div id="checkArea"></div>
     </section>
 
     <section class="card block hidden" id="summaryBlock">
-      <h3>🏁 Итог урока</h3>
+      <h3>🏆 Шаг 5. Итог урока</h3>
       <p>${lesson.summary}</p>
       <div id="lessonResult"></div>
     </section>`;
 
+  setLessonStep(0);
   startPractice(lesson, t);
+}
+
+/* Этапы урока для индикатора */
+const LESSON_STAGES = ["Учим", "Пример", "Тренировка", "Проверка", "Итог"];
+function setLessonStep(active) {
+  const wrap = document.getElementById("lessonSteps");
+  if (!wrap) return;
+  wrap.querySelectorAll(".lstep").forEach((el, i) => {
+    el.classList.toggle("done", i < active);
+    el.classList.toggle("active", i === active);
+    if (i < active) el.querySelector(".lstep-dot").textContent = "✓";
+    else el.querySelector(".lstep-dot").textContent = i + 1;
+  });
+  // подсветка текущего блока-карточки
+  const map = { 2: "blockPractice", 3: "checkBlock", 4: "summaryBlock" };
+  document.querySelectorAll(".block.current-block").forEach(b => b.classList.remove("current-block"));
+  if (map[active] && document.getElementById(map[active]))
+    document.getElementById(map[active]).classList.add("current-block");
 }
 
 function toggleSteps() {
@@ -613,7 +757,14 @@ function startPractice(lesson, topic) {
 function showPracticeTask() {
   const { lesson } = practiceState;
   const task = lesson.practice[practiceState.idx];
-  document.getElementById("practiceArea").innerHTML = taskHTML(task, "prac");
+  const n = lesson.practice.length;
+  setLessonStep(2);
+  document.getElementById("practiceArea").innerHTML = `
+    <div class="row-between mini-counter">
+      <span class="muted">Задача ${practiceState.idx + 1} из ${n}</span>
+      <span class="dots">${Array.from({ length: n }, (_, i) => `<i class="dot ${i < practiceState.idx ? "done" : i === practiceState.idx ? "cur" : ""}"></i>`).join("")}</span>
+    </div>
+    ${taskHTML(task, "prac")}`;
 }
 function answerPractice(taskIdx) {
   const { lesson, topic } = practiceState;
@@ -635,9 +786,10 @@ function answerPractice(taskIdx) {
 
 function runQuickCheck() {
   const { lesson } = practiceState;
+  setLessonStep(3);
   document.getElementById("checkBlock").classList.remove("hidden");
   document.getElementById("checkArea").innerHTML = taskHTML(lesson.check, "chk");
-  document.getElementById("checkArea").scrollIntoView({ behavior: "smooth" });
+  document.getElementById("checkBlock").scrollIntoView({ behavior: "smooth" });
 }
 function answerCheck() {
   const { lesson, topic } = practiceState;
@@ -664,6 +816,7 @@ function finishLesson() {
   saveState();
   checkAchievements();
 
+  setLessonStep(4);
   document.getElementById("summaryBlock").classList.remove("hidden");
   document.getElementById("lessonResult").innerHTML = `
     <div class="result-box">
@@ -691,9 +844,11 @@ function renderTrainer() {
       <h1>🎮 Тренажёр: ${t.title}</h1>
       <p class="muted">Выбери уровень сложности ${settings.taskSource === "textbook" ? '• <b>📖 задачи из учебника</b>' : ""}</p>
       <div class="level-pick">
-        <button class="lvl-btn easy" onclick="startTrainer('${t.id}','easy')">🟢 Лёгкий</button>
-        <button class="lvl-btn medium" onclick="startTrainer('${t.id}','medium')">🟡 Средний</button>
-        <button class="lvl-btn hard" onclick="startTrainer('${t.id}','hard')">🔴 Сложный</button>
+        ${[1, 2, 3].map(n => {
+          const L = LEVELS[n];
+          return `<button class="lvl-btn ${L.cls} ${curLevelNum() === n ? "recommend" : ""}" onclick="startTrainer('${t.id}','${L.key}')">
+            ${L.icon} Уровень ${n}<small>${L.name}${curLevelNum() === n ? " • твой" : ""}</small></button>`;
+        }).join("")}
       </div>
       <div class="level-pick">
         <button class="lvl-btn auto" onclick="startTrainer('${t.id}','auto')">🤖 Авто-подбор <small>(${levelLabel(autoLvl)})</small></button>
@@ -777,12 +932,182 @@ function finishTrainer() {
 }
 
 /* ============================================================
+   ЭКЗАМЕН УРОВНЯ (мини-тест в конце темы)
+   ============================================================ */
+const EXAM_PASS = 70; // процент для сдачи
+let examState = null;
+function buildExamPack(topic) {
+  const tr = activeTrainer(topic);
+  const pool = [];
+  // состав экзамена зависит от выбранного уровня сложности
+  const mix = { 1: { easy: 3, medium: 2, hard: 0 }, 2: { easy: 2, medium: 2, hard: 1 }, 3: { easy: 1, medium: 2, hard: 2 } }[curLevelNum()];
+  shuffle(tr.easy.slice()).slice(0, mix.easy).forEach(q => pool.push(q));
+  shuffle(tr.medium.slice()).slice(0, mix.medium).forEach(q => pool.push(q));
+  shuffle(tr.hard.slice()).slice(0, mix.hard).forEach(q => pool.push(q));
+  // если задач мало — добираем генератором на текущем уровне
+  while (pool.length < 5) pool.push(generateTask(topic.id, diffKey()));
+  return shuffle(pool).slice(0, 5);
+}
+function renderExam() {
+  const t = topicById(route.topicId);
+  examState = { topic: t, pack: buildExamPack(t), idx: 0, correct: 0 };
+  app().innerHTML = `
+    <section class="card head-card" style="border-top:5px solid ${t.color}">
+      <button class="back" onclick="navigate('map')">‹ Назад</button>
+      <h1>🏁 Экзамен уровня: ${t.title}</h1>
+      <p class="muted">5 вопросов из всей темы. Набери ${EXAM_PASS}% и больше — получишь медаль 🏅. Подсказки можно использовать!</p>
+    </section>
+    <div id="examArea"></div>`;
+  showExamTask();
+}
+function showExamTask() {
+  const es = examState;
+  if (es.idx >= es.pack.length) { finishExam(); return; }
+  const task = es.pack[es.idx];
+  es.current = task;
+  document.getElementById("examArea").innerHTML = `
+    <section class="card block current-block">
+      <div class="row-between mini-counter">
+        <span class="muted">Вопрос ${es.idx + 1} из ${es.pack.length}</span>
+        <span class="dots">${Array.from({ length: es.pack.length }, (_, i) => `<i class="dot ${i < es.idx ? "done" : i === es.idx ? "cur" : ""}"></i>`).join("")}</span>
+      </div>
+      <div id="examTask">${taskHTML(task, "ex")}</div>
+    </section>`;
+  document.getElementById("examArea").scrollIntoView({ behavior: "smooth" });
+}
+function answerExam() {
+  const es = examState;
+  const task = es.current;
+  const res = evaluate(task, "ex");
+  if (res.correct === null) return;
+  recordAnswer(es.topic.id, res.correct);
+  if (res.correct) es.correct++;
+  renderFeedback(task, res, "ex", () => { es.idx++; showExamTask(); });
+  checkAchievements();
+}
+function finishExam() {
+  const es = examState;
+  const pct = Math.round((es.correct / es.pack.length) * 100);
+  const passed = pct >= EXAM_PASS;
+  touchStreak();
+  scheduleReview(es.topic.id, 0);
+  const prevBest = (state.examsPassed && state.examsPassed[es.topic.id]) || 0;
+  const firstPass = passed && !prevBest;
+  if (passed) {
+    state.examsPassed[es.topic.id] = Math.max(prevBest, pct);
+    sfx("win");
+    if (firstPass) { addReward(30, 3, 0); burstConfetti(true); }
+  } else { sfx("wrong"); }
+  saveState();
+  checkAchievements();
+  document.getElementById("examArea").innerHTML = `
+    <section class="card block">
+      <div class="result-box">
+        <div class="big-emoji">${passed ? "🏅" : "💪"}</div>
+        <p><b>Результат: ${es.correct} из ${es.pack.length} (${pct}%)</b></p>
+        ${passed
+          ? `<p class="speech">🎉 Экзамен сдан! ${firstPass ? "Ты получаешь медаль темы!" : "Так держать!"}</p>
+             ${firstPass ? `<p class="reward-line">+30 🪙 &nbsp; +3 ⭐ &nbsp; 🏅 медаль</p>` : '<p class="muted">Медаль уже была получена раньше.</p>'}`
+          : `<p class="speech">Почти получилось! Нужно ${EXAM_PASS}%. Повтори уроки темы и попробуй снова — у тебя точно выйдет! 💪</p>`}
+        <div class="result-actions">
+          <button class="btn primary" onclick="navigate('exam',{topicId:'${es.topic.id}'})">${passed ? "Пройти ещё раз 🔁" : "Попробовать снова 🔁"}</button>
+          <button class="btn outline" onclick="navigate('map')">К карте 🗺️</button>
+        </div>
+      </div>
+    </section>`;
+}
+
+/* ============================================================
+   КУБОК СЕЗОНА (большой финал по всем темам)
+   ============================================================ */
+let cupState = null;
+function buildCupPack() {
+  const pool = [];
+  // из каждой темы: один вопрос выбранного уровня + один соседний
+  const second = { 1: "easy", 2: "medium", 3: "hard" }[curLevelNum()];
+  TOPICS.forEach(t => {
+    const tr = activeTrainer(t);
+    const main = tr[diffKey()].length ? tr[diffKey()] : tr.medium;
+    shuffle(main.slice()).slice(0, 1).forEach(q => pool.push({ q, topicId: t.id }));
+    shuffle((tr[second] || tr.medium).slice()).slice(0, 1).forEach(q => pool.push({ q, topicId: t.id }));
+  });
+  return shuffle(pool).slice(0, 10);
+}
+function renderCup() {
+  if (!allMedals()) { navigate("home"); return; }
+  cupState = { pack: buildCupPack(), idx: 0, correct: 0 };
+  app().innerHTML = `
+    <section class="card head-card cup-head">
+      <button class="back" onclick="navigate('home')">‹ Назад</button>
+      <h1>🏆 Кубок сезона</h1>
+      <p class="muted">Большой финал — 10 вопросов из всех тем! Набери ${CUP_PASS}% и стань чемпионом сезона. 🏁</p>
+    </section>
+    <div id="cupArea"></div>`;
+  showCupTask();
+}
+function showCupTask() {
+  const cs = cupState;
+  if (cs.idx >= cs.pack.length) { finishCup(); return; }
+  const item = cs.pack[cs.idx];
+  cs.current = item;
+  document.getElementById("cupArea").innerHTML = `
+    <section class="card block current-block">
+      <div class="row-between mini-counter">
+        <span class="muted">Вопрос ${cs.idx + 1} из ${cs.pack.length}</span>
+        <span class="dots">${Array.from({ length: cs.pack.length }, (_, i) => `<i class="dot ${i < cs.idx ? "done" : i === cs.idx ? "cur" : ""}"></i>`).join("")}</span>
+      </div>
+      <div id="cupTask">${taskHTML(item.q, "cp")}</div>
+    </section>`;
+  document.getElementById("cupArea").scrollIntoView({ behavior: "smooth" });
+}
+function answerCup() {
+  const cs = cupState;
+  const item = cs.current;
+  const res = evaluate(item.q, "cp");
+  if (res.correct === null) return;
+  recordAnswer(item.topicId, res.correct);
+  if (res.correct) cs.correct++;
+  renderFeedback(item.q, res, "cp", () => { cs.idx++; showCupTask(); });
+  checkAchievements();
+}
+function finishCup() {
+  const cs = cupState;
+  const pct = Math.round((cs.correct / cs.pack.length) * 100);
+  const won = pct >= CUP_PASS;
+  const firstWin = won && !state.cupBest;
+  touchStreak();
+  if (won) {
+    state.cupBest = Math.max(state.cupBest || 0, pct);
+    sfx("win");
+    burstConfetti(true); setTimeout(() => burstConfetti(true), 400);
+    if (firstWin) addReward(100, 10, 0);
+  } else { sfx("wrong"); }
+  saveState();
+  checkAchievements();
+  document.getElementById("cupArea").innerHTML = `
+    <section class="card block">
+      <div class="result-box">
+        <div class="big-emoji">${won ? "🏆" : "💪"}</div>
+        <p><b>Результат: ${cs.correct} из ${cs.pack.length} (${pct}%)</b></p>
+        ${won
+          ? `<p class="speech">🎉 Поздравляю, ты <b>Чемпион сезона</b>! Кубок твой! 🏆</p>
+             ${firstWin ? `<p class="reward-line">+100 🪙 &nbsp; +10 ⭐ &nbsp; 🏆 Кубок</p>` : '<p class="muted">Кубок уже был выигран раньше.</p>'}`
+          : `<p class="speech">Так близко! Для кубка нужно ${CUP_PASS}%. Повтори слабые темы и возвращайся — чемпионство ждёт! 💪</p>`}
+        <div class="result-actions">
+          <button class="btn primary" onclick="navigate('cup')">Ещё раз 🔁</button>
+          <button class="btn outline" onclick="navigate('home')">На главную 🏠</button>
+        </div>
+      </div>
+    </section>`;
+}
+
+/* ============================================================
    РЕЖИМ «5 МИНУТ»
    ============================================================ */
 function buildFivePack() {
-  // 5 коротких вопросов из новых тем + 1 мини-задача + 1 на повторение старой темы
+  // 5 коротких вопросов выбранного уровня + 1 мини-задача + 1 на повторение
   const pool = [];
-  TOPICS.forEach(t => { const tr = activeTrainer(t); tr.easy.concat(tr.medium).forEach(q => pool.push({ q, topicId: t.id })); });
+  TOPICS.forEach(t => { const tr = activeTrainer(t); (tr[diffKey()] || tr.medium).forEach(q => pool.push({ q, topicId: t.id })); });
   shuffle(pool);
   const quick = pool.slice(0, 5);
   const mini = pool.find(p => p.q.q.length > 30) || pool[5];
@@ -949,9 +1274,15 @@ function renderProfile() {
 
     <section class="card">
       <strong>⚙️ Настройки</strong>
+      <div class="switch-row"><span>🎚️ Сложность заданий</span></div>
+      ${difficultyPicker()}
       <label class="switch-row">
         <span>🔊 Озвучка объяснений</span>
         <input type="checkbox" ${settings.audio ? "checked" : ""} onchange="toggleAudio()">
+      </label>
+      <label class="switch-row">
+        <span>🎵 Звуковые эффекты</span>
+        <input type="checkbox" ${settings.sound ? "checked" : ""} onchange="toggleSound()">
       </label>
       <label class="switch-row">
         <span>🔓 Открыть все острова сразу</span>
@@ -1106,11 +1437,11 @@ function accuracy() {
 /* ============================================================
    ОБЩИЙ РЕНДЕР ЗАДАЧ И ПРОВЕРКА
    ============================================================ */
-function levelLabel(l) { return { easy: "🟢 Лёгкий", medium: "🟡 Средний", hard: "🔴 Сложный" }[l] || ""; }
+function levelLabel(l) { return { easy: "🟢 Ур.1 · Лёгкий", medium: "🟡 Ур.2 · Средний", hard: "🔴 Ур.3 · Сложный" }[l] || ""; }
 
 /* Уникальный input id по контексту (prac/chk/tr/fv) */
 function answerHandler(ctx) {
-  return { prac: "answerPractice()", chk: "answerCheck()", tr: "answerTrainer()", fv: "answerFive()" }[ctx];
+  return { prac: "answerPractice()", chk: "answerCheck()", tr: "answerTrainer()", fv: "answerFive()", ex: "answerExam()", cp: "answerCup()" }[ctx];
 }
 
 function taskHTML(task, ctx) {
@@ -1145,7 +1476,7 @@ function taskHTML(task, ctx) {
               onkeydown="if(event.key==='Enter'){${answerHandler(ctx)}}">`;
   }
   const qLine = task.type === "fill" ? "" : `<p class="q">${task.q} ${speakBtn(task.q)}</p>`;
-  const refLine = task.ref ? `<div class="task-ref">📖 Учебник, задача ${task.ref}</div>` : "";
+  const refLine = task.ref ? `<div class="task-ref">📖 Учебник${/^№/.test(task.ref) ? ", задача " : " • "}${task.ref}</div>` : "";
   return `
     ${qLine}
     ${refLine}
@@ -1207,12 +1538,14 @@ function renderFeedback(task, res, ctx, onNext, offerSimilar = false) {
   if (res.correct) {
     const cheer = pifSay("cheer");
     burstConfetti();
+    sfx("correct");
     speak(cheer);
     fb.className = "feedback ok";
     fb.innerHTML = `<b>✅ Верно!</b> ${cheer} <br><small>${task.explain || ""}</small>
       <div class="task-actions"><button class="btn primary" id="${ctx}_next">Дальше ›</button></div>`;
   } else {
     const oops = pifSay("oops");
+    sfx("wrong");
     speak(oops);
     fb.className = "feedback bad";
     fb.innerHTML = `<b>${oops}</b>
@@ -1245,6 +1578,7 @@ function showAchievementToast(list) {
     <div><b>Новая награда!</b><br>${a.title}</div></div>`).join("");
   t.classList.add("show");
   burstConfetti(true);
+  sfx("reward");
   setTimeout(() => t.classList.remove("show"), 3500);
 }
 
